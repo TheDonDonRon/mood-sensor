@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mood Sensor Controller</title>
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --card: #1a1a2e;
+    --border: #2a2a4a;
+    --accent: #7c3aed;
+    --accent2: #06b6d4;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --success: #10b981;
+    --error: #ef4444;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 48px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.5px;
+  }
+
+  header p {
+    color: var(--muted);
+    font-size: 0.88rem;
+    margin-top: 4px;
+  }
+
+  /* Config panel */
+  .config {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    width: 100%;
+    max-width: 520px;
+    margin-bottom: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .config h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .field-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .field-row label {
+    font-size: 0.82rem;
+    color: var(--muted);
+    white-space: nowrap;
+    min-width: 110px;
+  }
+
+  .field-row input {
+    flex: 1;
+    background: #0f0f1a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    color: var(--text);
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .field-row input:focus {
+    border-color: var(--accent);
+  }
+
+  /* Status bar */
+  #status {
+    width: 100%;
+    max-width: 520px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 0.83rem;
+    text-align: center;
+    margin-bottom: 20px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    transition: all 0.3s;
+  }
+
+  #status.ok   { border-color: var(--success); color: var(--success); }
+  #status.err  { border-color: var(--error);   color: var(--error);   }
+  #status.busy { border-color: var(--accent2); color: var(--accent2); }
+
+  /* Current mood display */
+  #current-display {
+    font-size: 2.4rem;
+    line-height: 1;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+
+  #current-display .label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    display: block;
+    margin-top: 4px;
+  }
+
+  /* Mood grid */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    width: 100%;
+    max-width: 520px;
+  }
+
+  .mood-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 8px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.18s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mood-btn:hover {
+    border-color: var(--accent);
+    background: #1f1f38;
+    transform: translateY(-2px);
+  }
+
+  .mood-btn:active {
+    transform: scale(0.96);
+  }
+
+  .mood-btn.active {
+    border-color: var(--accent2);
+    background: #0d2233;
+    box-shadow: 0 0 0 2px var(--accent2);
+  }
+
+  .mood-btn .emoji {
+    font-size: 2rem;
+    line-height: 1;
+  }
+
+  .mood-btn .name {
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  .mood-btn .code {
+    font-size: 0.65rem;
+    color: #44476a;
+  }
+
+  /* Spinner overlay on buttons */
+  .mood-btn.sending .emoji {
+    animation: pulse 0.6s infinite alternate;
+  }
+
+  @keyframes pulse {
+    from { opacity: 1; }
+    to   { opacity: 0.3; }
+  }
+
+  footer {
+    margin-top: 36px;
+    font-size: 0.75rem;
+    color: #44476a;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎛️ Mood Sensor</h1>
+  <p>Click a mood to send it to your Heltec display</p>
+</header>
+
+<!-- ThingSpeak config -->
+<div class="config">
+  <h2>ThingSpeak Config</h2>
+  <div class="field-row">
+    <label>Channel ID</label>
+    <input id="3418991" type="text" placeholder="e.g. 2987654" value="">
+  </div>
+  <div class="field-row">
+    <label>Write API Key</label>
+    <input id="7XBOPFTLZLKI13GN" type="text" placeholder="e.g. ABCDEF1234567890" value="">
+  </div>
+</div>
+
+<div id="status">Enter your Channel ID and Write API Key above, then click a mood.</div>
+
+<div id="current-display">
+  <span id="current-emoji">—</span>
+  <span class="label" id="current-label">No mood sent yet</span>
+</div>
+
+<div class="grid" id="moodGrid"></div>
+
+<footer>Field 1 carries the mood code (1–15) · Heltec polls every 10 s</footer>
+
+<script>
+const moods = [
+  { code:  1, emoji: "😠", name: "Mad"        },
+  { code:  2, emoji: "😊", name: "Happy"      },
+  { code:  3, emoji: "😢", name: "Crying"     },
+  { code:  4, emoji: "☕", name: "Coffee"     },
+  { code:  5, emoji: "😰", name: "Nervous"    },
+  { code:  6, emoji: "😲", name: "Surprised"  },
+  { code:  7, emoji: "😎", name: "Cool"       },
+  { code:  8, emoji: "😉", name: "Wink"       },
+  { code:  9, emoji: "😴", name: "Sleepy"     },
+  { code: 10, emoji: "🤬", name: "Angry!"     },
+  { code: 11, emoji: "🤢", name: "Sick"       },
+  { code: 12, emoji: "😍", name: "In Love"    },
+  { code: 13, emoji: "💀", name: "Dead"       },
+  { code: 14, emoji: "🤑", name: "Money Eyes" },
+  { code: 15, emoji: "🥳", name: "Party!"     },
+];
+
+let activeMood = null;
+let sending    = false;
+
+// Build grid
+const grid = document.getElementById("moodGrid");
+moods.forEach(m => {
+  const btn = document.createElement("button");
+  btn.className = "mood-btn";
+  btn.dataset.code = m.code;
+  btn.innerHTML = `
+    <span class="emoji">${m.emoji}</span>
+    <span class="name">${m.name}</span>
+    <span class="code">#${m.code}</span>
+  `;
+  btn.addEventListener("click", () => sendMood(m));
+  grid.appendChild(btn);
+});
+
+function setStatus(msg, type = "") {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.className = type;
+}
+
+async function sendMood(m) {
+  if (sending) return;
+
+  const channelId = document.getElementById("channelId").value.trim();
+  const writeKey  = document.getElementById("writeKey").value.trim();
+
+  if (!channelId || !writeKey) {
+    setStatus("⚠️ Please enter your Channel ID and Write API Key first.", "err");
+    return;
+  }
+
+  sending = true;
+  const btn = grid.querySelector(`[data-code="${m.code}"]`);
+  btn.classList.add("sending");
+  setStatus(`Sending "${m.name}" (code ${m.code}) to ThingSpeak…`, "busy");
+
+  const url = `https://api.thingspeak.com/update?api_key=${encodeURIComponent(writeKey)}&field1=${m.code}`;
+
+  try {
+    const res  = await fetch(url);
+    const text = await res.text();
+    const entry = parseInt(text, 10);
+
+    if (entry > 0) {
+      // Success — update UI
+      if (activeMood) {
+        grid.querySelector(`[data-code="${activeMood}"]`)?.classList.remove("active");
+      }
+      btn.classList.add("active");
+      activeMood = m.code;
+
+      document.getElementById("current-emoji").textContent = m.emoji;
+      document.getElementById("current-label").textContent = `${m.name} · Code ${m.code} · Entry #${entry}`;
+      setStatus(`✅ Sent! Heltec will show "${m.name}" on next poll (≤10 s).`, "ok");
+
+      // Save to localStorage for persistence across page refresh
+      localStorage.setItem("ts_channel", channelId);
+      localStorage.setItem("ts_key",     writeKey);
+    } else {
+      setStatus(`❌ ThingSpeak rejected the update. Check your API Key (got: "${text}").`, "err");
+    }
+  } catch (err) {
+    setStatus(`❌ Network error: ${err.message}`, "err");
+  } finally {
+    sending = false;
+    btn.classList.remove("sending");
+  }
+}
+
+// Restore saved config
+window.addEventListener("load", () => {
+  const ch = localStorage.getItem("ts_channel");
+  const k  = localStorage.getItem("ts_key");
+  if (ch) document.getElementById("channelId").value = ch;
+  if (k)  document.getElementById("writeKey").value  = k;
+});
+</script>
+</body>
+</html>
