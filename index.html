@@ -20,11 +20,16 @@
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
+  html, body {
+    background: var(--bg) !important;
+  }
+
   body {
     font-family: 'Segoe UI', system-ui, sans-serif;
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
+    width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -224,11 +229,11 @@
   <h2>ThingSpeak Config</h2>
   <div class="field-row">
     <label>Channel ID</label>
-    <input id="3418991" type="text" placeholder="e.g. 2987654" value="">
+    <input id="channelId" type="text" placeholder="e.g. 2987654" value="">
   </div>
   <div class="field-row">
     <label>Write API Key</label>
-    <input id="7XBOPFTLZLKI13GN" type="text" placeholder="e.g. ABCDEF1234567890" value="">
+    <input id="writeKey" type="text" placeholder="e.g. ABCDEF1234567890" value="">
   </div>
 </div>
 
@@ -241,10 +246,10 @@
 
 <div class="grid" id="moodGrid"></div>
 
-<footer>Field 1 carries the mood code (1–15) · Heltec polls every 10 s</footer>
+<footer>Field 1 carries the mood code (1-15) - Heltec polls every 10 s</footer>
 
 <script>
-const moods = [
+var moods = [
   { code:  1, emoji: "😠", name: "Mad"        },
   { code:  2, emoji: "😊", name: "Happy"      },
   { code:  3, emoji: "😢", name: "Crying"     },
@@ -262,85 +267,125 @@ const moods = [
   { code: 15, emoji: "🥳", name: "Party!"     },
 ];
 
-let activeMood = null;
-let sending    = false;
+var activeMood = null;
+var sending    = false;
 
-// Build grid
-const grid = document.getElementById("moodGrid");
-moods.forEach(m => {
-  const btn = document.createElement("button");
-  btn.className = "mood-btn";
-  btn.dataset.code = m.code;
-  btn.innerHTML = `
-    <span class="emoji">${m.emoji}</span>
-    <span class="name">${m.name}</span>
-    <span class="code">#${m.code}</span>
-  `;
-  btn.addEventListener("click", () => sendMood(m));
-  grid.appendChild(btn);
-});
+// Build grid (DOM methods only — no template literals, Markdown-safe)
+var grid = document.getElementById("moodGrid");
+if (!grid) {
+  setStatus("Page error: mood grid container not found. Try a hard refresh (Ctrl+Shift+R).", "err");
+} else {
+  for (var mi = 0; mi < moods.length; mi++) {
+    (function(m) {
+      var btn = document.createElement("button");
+      btn.className = "mood-btn";
+      btn.dataset.code = m.code;
 
-function setStatus(msg, type = "") {
-  const el = document.getElementById("status");
-  el.textContent = msg;
-  el.className = type;
+      var emojiSpan = document.createElement("span");
+      emojiSpan.className = "emoji";
+      emojiSpan.textContent = m.emoji;
+
+      var nameSpan = document.createElement("span");
+      nameSpan.className = "name";
+      nameSpan.textContent = m.name;
+
+      var codeSpan = document.createElement("span");
+      codeSpan.className = "code";
+      codeSpan.textContent = "#" + m.code;
+
+      btn.appendChild(emojiSpan);
+      btn.appendChild(nameSpan);
+      btn.appendChild(codeSpan);
+
+      btn.addEventListener("click", function() { sendMood(m); });
+      grid.appendChild(btn);
+    })(moods[mi]);
+  }
 }
 
-async function sendMood(m) {
+function setStatus(msg, type) {
+  var el = document.getElementById("status");
+  if (!el) return;
+  el.textContent = msg;
+  el.className = type || "";
+}
+
+function sendMood(m) {
   if (sending) return;
 
-  const channelId = document.getElementById("channelId").value.trim();
-  const writeKey  = document.getElementById("writeKey").value.trim();
+  var channelIdEl = document.getElementById("channelId");
+  var writeKeyEl  = document.getElementById("writeKey");
+
+  if (!channelIdEl || !writeKeyEl) {
+    setStatus("Page error: input fields not found. Try a hard refresh (Ctrl+Shift+R).", "err");
+    return;
+  }
+
+  var channelId = channelIdEl.value.trim();
+  var writeKey  = writeKeyEl.value.trim();
 
   if (!channelId || !writeKey) {
-    setStatus("⚠️ Please enter your Channel ID and Write API Key first.", "err");
+    setStatus("Please enter your Channel ID and Write API Key first.", "err");
     return;
   }
 
   sending = true;
-  const btn = grid.querySelector(`[data-code="${m.code}"]`);
-  btn.classList.add("sending");
-  setStatus(`Sending "${m.name}" (code ${m.code}) to ThingSpeak…`, "busy");
+  var btn = grid.querySelector("[data-code=\"" + m.code + "\"]");
+  if (btn) btn.classList.add("sending");
+  setStatus("Sending \"" + m.name + "\" (code " + m.code + ") to ThingSpeak...", "busy");
 
-  const url = `https://api.thingspeak.com/update?api_key=${encodeURIComponent(writeKey)}&field1=${m.code}`;
+  var url = "https://api.thingspeak.com/update?api_key=" + encodeURIComponent(writeKey) + "&field1=" + m.code;
 
-  try {
-    const res  = await fetch(url);
-    const text = await res.text();
-    const entry = parseInt(text, 10);
+  fetch(url)
+    .then(function(res) { return res.text(); })
+    .then(function(text) {
+      var entry = parseInt(text, 10);
 
-    if (entry > 0) {
-      // Success — update UI
-      if (activeMood) {
-        grid.querySelector(`[data-code="${activeMood}"]`)?.classList.remove("active");
+      if (entry > 0) {
+        if (activeMood) {
+          var prevBtn = grid.querySelector("[data-code=\"" + activeMood + "\"]");
+          if (prevBtn) prevBtn.classList.remove("active");
+        }
+        if (btn) btn.classList.add("active");
+        activeMood = m.code;
+
+        var emojiEl = document.getElementById("current-emoji");
+        var labelEl = document.getElementById("current-label");
+        if (emojiEl) emojiEl.textContent = m.emoji;
+        if (labelEl) labelEl.textContent = m.name + " - Code " + m.code + " - Entry #" + entry;
+        setStatus("Sent! Heltec will show \"" + m.name + "\" on next poll (within 10s).", "ok");
+
+        try {
+          localStorage.setItem("ts_channel", channelId);
+          localStorage.setItem("ts_key", writeKey);
+        } catch (e) {
+          // Storage unavailable in this embed context — not fatal, just won't persist
+        }
+      } else {
+        setStatus("ThingSpeak rejected the update. Check your API Key (got: \"" + text + "\").", "err");
       }
-      btn.classList.add("active");
-      activeMood = m.code;
-
-      document.getElementById("current-emoji").textContent = m.emoji;
-      document.getElementById("current-label").textContent = `${m.name} · Code ${m.code} · Entry #${entry}`;
-      setStatus(`✅ Sent! Heltec will show "${m.name}" on next poll (≤10 s).`, "ok");
-
-      // Save to localStorage for persistence across page refresh
-      localStorage.setItem("ts_channel", channelId);
-      localStorage.setItem("ts_key",     writeKey);
-    } else {
-      setStatus(`❌ ThingSpeak rejected the update. Check your API Key (got: "${text}").`, "err");
-    }
-  } catch (err) {
-    setStatus(`❌ Network error: ${err.message}`, "err");
-  } finally {
-    sending = false;
-    btn.classList.remove("sending");
-  }
+    })
+    .catch(function(err) {
+      setStatus("Network error: " + err.message, "err");
+    })
+    .finally(function() {
+      sending = false;
+      if (btn) btn.classList.remove("sending");
+    });
 }
 
 // Restore saved config
-window.addEventListener("load", () => {
-  const ch = localStorage.getItem("ts_channel");
-  const k  = localStorage.getItem("ts_key");
-  if (ch) document.getElementById("channelId").value = ch;
-  if (k)  document.getElementById("writeKey").value  = k;
+window.addEventListener("load", function() {
+  try {
+    var ch = localStorage.getItem("ts_channel");
+    var k  = localStorage.getItem("ts_key");
+    var channelIdEl = document.getElementById("channelId");
+    var writeKeyEl  = document.getElementById("writeKey");
+    if (ch && channelIdEl) channelIdEl.value = ch;
+    if (k  && writeKeyEl)  writeKeyEl.value  = k;
+  } catch (e) {
+    // Storage unavailable in this embed context — fine, just start blank
+  }
 });
 </script>
 </body>
